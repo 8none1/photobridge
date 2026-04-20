@@ -21,15 +21,35 @@ SOURCE_DIR="."
 
 # Names of secrets in Secret Manager (must match photobridge/config.py)
 SECRET_NAMES=(
+  # WhatsApp
   "photobridge-wa-phone-number-id"
   "photobridge-wa-access-token"
   "photobridge-wa-verify-token"
   "photobridge-wa-app-secret"
+  # WordPress
   "photobridge-wp-url"
   "photobridge-wp-username"
   "photobridge-wp-app-password"
+  # Google Drive
   "photobridge-drive-folder-id"
   "photobridge-service-account-json"
+  # Instagram
+  "photobridge-instagram-user-id"
+  "photobridge-instagram-access-token"
+)
+
+# Plugin on/off and tag configuration is set via plain env vars (not secrets)
+# because they contain no credentials. Adjust these defaults as needed.
+PLUGIN_ENV_VARS=(
+  "PLUGIN_WORDPRESS_ENABLED=true"
+  "PLUGIN_WORDPRESS_REQUIRE_TAG=false"
+  "PLUGIN_WORDPRESS_TAG=#wordpress"
+  "PLUGIN_DRIVE_ENABLED=true"
+  "PLUGIN_DRIVE_REQUIRE_TAG=false"
+  "PLUGIN_DRIVE_TAG=#drive"
+  "PLUGIN_INSTAGRAM_ENABLED=true"
+  "PLUGIN_INSTAGRAM_REQUIRE_TAG=false"
+  "PLUGIN_INSTAGRAM_TAG=#instagram"
 )
 
 function setup_secrets() {
@@ -60,6 +80,9 @@ function deploy_function() {
     drive.googleapis.com \
     --project="$PROJECT_ID"
 
+  # Build the --set-env-vars string from PLUGIN_ENV_VARS array
+  PLUGIN_VARS_CSV=$(IFS=,; echo "${PLUGIN_ENV_VARS[*]}")
+
   echo "=== Deploying Cloud Function ==="
   gcloud functions deploy "$FUNCTION_NAME" \
     --gen2 \
@@ -69,7 +92,7 @@ function deploy_function() {
     --entry-point="webhook" \
     --trigger-http \
     --allow-unauthenticated \
-    --set-env-vars="USE_SECRET_MANAGER=true,GCP_PROJECT_ID=${PROJECT_ID}" \
+    --set-env-vars="USE_SECRET_MANAGER=true,GCP_PROJECT_ID=${PROJECT_ID},${PLUGIN_VARS_CSV}" \
     --project="$PROJECT_ID"
 
   FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \

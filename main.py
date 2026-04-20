@@ -2,29 +2,44 @@
 photobridge — Cloud Function entrypoint.
 
 Receives WhatsApp webhook events from Meta, extracts photos, and fans
-them out to Google Drive and WordPress.
+them out to all enabled destination plugins in priority order.
+
+Adding a new destination
+------------------------
+1. Create photobridge/plugins/<name>.py subclassing BasePlugin
+2. Import it here and add an instance to PLUGINS
+3. Add its config vars to .env.example and deploy/deploy.sh
 """
 
 import hashlib
 import hmac
-import json
 import logging
-import os
 
 import functions_framework
 from flask import Request, jsonify
 
 from photobridge.config import settings
 from photobridge.handlers.whatsapp import WhatsAppHandler
-from photobridge.handlers.drive import DriveHandler
-from photobridge.handlers.wordpress import WordPressHandler
+from photobridge.plugins.drive import DrivePlugin
+from photobridge.plugins.instagram import InstagramPlugin
+from photobridge.plugins.wordpress import WordPressPlugin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- Plugin registry ---
+# Plugins are sorted by priority at startup; lower number runs first.
+# Add new destination plugins here.
+PLUGINS = sorted(
+    [
+        WordPressPlugin(settings),
+        DrivePlugin(settings),
+        InstagramPlugin(settings),
+    ],
+    key=lambda p: p.priority,
+)
+
 _whatsapp = WhatsAppHandler(settings)
-_drive = DriveHandler(settings)
-_wordpress = WordPressHandler(settings)
 
 
 @functions_framework.http
@@ -44,7 +59,6 @@ def webhook(request: Request):
 
     # --- Incoming event (POST) ---
     if request.method == "POST":
-        # Validate payload signature
         signature = request.headers.get("X-Hub-Signature-256", "")
         if not _verify_signature(request.get_data(), signature):
             logger.warning("Invalid webhook signature — ignoring")
@@ -79,18 +93,17 @@ def _process_payload(payload: dict) -> None:
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value", {})
-            messages = value.get("messages", [])
-            for message in messages:
+            for message in value.get("messages", []):
                 if not _is_relevant_message(message):
                     continue
-                _handle_image_message(message, value)
+                _handle_image_message(message)
 
 
 def _is_relevant_message(message: dict) -> bool:
     """
     Accept the message if:
     - It is a direct message containing an image, OR
-    - It is a group message containing an image where the bot is mentioned
+    - It is a group message containing an image where the bot is @mentioned
     """
     if message.get("type") != "image":
         return False
@@ -104,8 +117,8 @@ def _is_relevant_message(message: dict) -> bool:
     return True  # DMs always accepted
 
 
-def _handle_image_message(message: dict, value: dict) -> None:
-    """Download the image and fan out to Drive and WordPress."""
+def _handle_image_message(message: dict) -> None:
+    """Download the image and fan it out through all triggered plugins."""
     image_id = message["image"]["id"]
     sender = message.get("from", "unknown")
     caption = message.get("image", {}).get("caption", "")
@@ -121,25 +134,27 @@ def _handle_image_message(message: dict, value: dict) -> None:
 
     filename = f"{image_id}.jpg"
     errors = []
+    # context accumulates URLs from each plugin so downstream plugins can use them
+    # (e.g. Instagram reads context['wordpress'] for its public image URL)
+    context: dict[str, str] = {}
 
-    # Upload to Google Drive
-    try:
-        drive_url = _drive.upload(image_bytes, filename, mime_type, caption)
-        logger.info("Uploaded to Drive: %s", drive_url)
-    except Exception:
-        logger.exception("Drive upload failed for %s", image_id)
-        errors.append("Google Drive")
+    for plugin in PLUGINS:
+        if not plugin.should_process(caption):
+            logger.info("Plugin '%s' skipped (not triggered)", plugin.name)
+            continue
+        try:
+            url = plugin.upload(image_bytes, filename, mime_type, caption, context)
+            context[plugin.name] = url
+            logger.info("Plugin '%s' succeeded: %s", plugin.name, url)
+        except Exception:
+            logger.exception("Plugin '%s' failed for image %s", plugin.name, image_id)
+            errors.append(plugin.name)
 
-    # Upload to WordPress
-    try:
-        wp_url = _wordpress.upload(image_bytes, filename, mime_type, caption)
-        logger.info("Uploaded to WordPress: %s", wp_url)
-    except Exception:
-        logger.exception("WordPress upload failed for %s", image_id)
-        errors.append("WordPress")
-
-    # Confirm back to the sender
     if errors:
         _whatsapp.send_reply(sender, f"Photo received but upload failed for: {', '.join(errors)}.")
+    elif context:
+        destinations = ", ".join(context.keys())
+        _whatsapp.send_reply(sender, f"Photo uploaded to: {destinations}!")
     else:
-        _whatsapp.send_reply(sender, "Photo uploaded to the gallery and Drive!")
+        # All plugins were skipped (none triggered)
+        logger.info("No plugins triggered for image %s", image_id)

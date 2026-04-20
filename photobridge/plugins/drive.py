@@ -1,9 +1,9 @@
 """
-Google Drive handler.
+Google Drive destination plugin.
 
-Uses a service account to upload photos to a shared Drive folder.
-Requires the Drive API to be enabled in your GCP project and the
-service account to have Editor access on the target folder.
+Uploads images to a shared Drive folder using a service account.
+Requires the Drive API to be enabled and the service account to have
+Editor access on the target folder.
 """
 
 import io
@@ -13,14 +13,19 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
+from photobridge.plugins.base import BasePlugin
+
 logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
-class DriveHandler:
+class DrivePlugin(BasePlugin):
+    name = "drive"
+    priority = 10
+
     def __init__(self, settings):
-        self._settings = settings
+        super().__init__(settings)
         self._service = None
 
     def _get_service(self):
@@ -32,20 +37,22 @@ class DriveHandler:
             self._service = build("drive", "v3", credentials=creds, cache_discovery=False)
         return self._service
 
-    def upload(self, image_bytes: bytes, filename: str, mime_type: str, description: str = "") -> str:
-        """
-        Upload image_bytes to the configured Drive folder.
-
-        Returns the web view URL of the uploaded file.
-        """
+    def upload(
+        self,
+        image_bytes: bytes,
+        filename: str,
+        mime_type: str,
+        caption: str,
+        context: dict,
+    ) -> str:
         service = self._get_service()
 
         file_metadata = {
             "name": filename,
             "parents": [self._settings.google_drive_folder_id],
         }
-        if description:
-            file_metadata["description"] = description
+        if caption:
+            file_metadata["description"] = caption
 
         media = MediaIoBaseUpload(
             io.BytesIO(image_bytes),
@@ -63,5 +70,6 @@ class DriveHandler:
             .execute()
         )
 
+        url = file.get("webViewLink", "")
         logger.info("Drive upload complete: %s", file.get("id"))
-        return file.get("webViewLink", "")
+        return url

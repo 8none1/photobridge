@@ -37,6 +37,7 @@ class Settings:
         return response.payload.data.decode("utf-8")
 
     # --- WhatsApp ---
+
     @property
     def whatsapp_phone_number_id(self) -> str:
         return self._get("WHATSAPP_PHONE_NUMBER_ID", "photobridge-wa-phone-number-id")
@@ -54,6 +55,7 @@ class Settings:
         return self._get("WHATSAPP_APP_SECRET", "photobridge-wa-app-secret")
 
     # --- WordPress ---
+
     @property
     def wordpress_url(self) -> str:
         return self._get("WORDPRESS_URL", "photobridge-wp-url")
@@ -67,6 +69,7 @@ class Settings:
         return self._get("WORDPRESS_APP_PASSWORD", "photobridge-wp-app-password")
 
     # --- Google Drive ---
+
     @property
     def google_drive_folder_id(self) -> str:
         return self._get("GOOGLE_DRIVE_FOLDER_ID", "photobridge-drive-folder-id")
@@ -82,6 +85,16 @@ class Settings:
             with open(key_path) as f:
                 return json.load(f)
         raise ValueError("No Google service account configured")
+
+    # --- Instagram ---
+
+    @property
+    def instagram_user_id(self) -> str:
+        return self._get("INSTAGRAM_USER_ID", "photobridge-instagram-user-id")
+
+    @property
+    def instagram_access_token(self) -> str:
+        return self._get("INSTAGRAM_ACCESS_TOKEN", "photobridge-instagram-access-token")
 
 
 settings = Settings()
