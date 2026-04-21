@@ -75,16 +75,16 @@ class Settings:
         return self._get("GOOGLE_DRIVE_FOLDER_ID", "photobridge-drive-folder-id")
 
     @property
-    def google_service_account_info(self) -> dict:
-        """Returns parsed service account JSON."""
-        if self._use_secret_manager:
-            raw = self._fetch_secret("photobridge-service-account-json")
-            return json.loads(raw)
-        key_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH", "")
-        if key_path:
-            with open(key_path) as f:
-                return json.load(f)
-        raise ValueError("No Google service account configured")
+    def google_drive_client_id(self) -> str:
+        return self._get("GOOGLE_DRIVE_CLIENT_ID", "photobridge-drive-client-id")
+
+    @property
+    def google_drive_client_secret(self) -> str:
+        return self._get("GOOGLE_DRIVE_CLIENT_SECRET", "photobridge-drive-client-secret")
+
+    @property
+    def google_drive_refresh_token(self) -> str:
+        return self._get("GOOGLE_DRIVE_REFRESH_TOKEN", "photobridge-drive-refresh-token")
 
     # --- Instagram ---
 

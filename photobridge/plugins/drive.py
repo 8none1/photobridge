@@ -1,15 +1,16 @@
 """
 Google Drive destination plugin.
 
-Uploads images to a shared Drive folder using a service account.
-Requires the Drive API to be enabled and the service account to have
-Editor access on the target folder.
+Uploads images to a Drive folder using OAuth user credentials (refresh token).
+Files are owned by the authorised Google account, so they count against that
+account's storage quota rather than a service account (which has none).
 """
 
 import io
 import logging
 
-from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
@@ -30,10 +31,15 @@ class DrivePlugin(BasePlugin):
 
     def _get_service(self):
         if self._service is None:
-            creds = service_account.Credentials.from_service_account_info(
-                self._settings.google_service_account_info,
+            creds = Credentials(
+                token=None,
+                refresh_token=self._settings.google_drive_refresh_token,
+                client_id=self._settings.google_drive_client_id,
+                client_secret=self._settings.google_drive_client_secret,
+                token_uri="https://oauth2.googleapis.com/token",
                 scopes=SCOPES,
             )
+            creds.refresh(Request())
             self._service = build("drive", "v3", credentials=creds, cache_discovery=False)
         return self._service
 

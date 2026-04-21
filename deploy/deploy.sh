@@ -32,7 +32,9 @@ SECRET_NAMES=(
   "photobridge-wp-app-password"
   # Google Drive
   "photobridge-drive-folder-id"
-  "photobridge-service-account-json"
+  "photobridge-drive-client-id"
+  "photobridge-drive-client-secret"
+  "photobridge-drive-refresh-token"
   # Instagram
   "photobridge-instagram-user-id"
   "photobridge-instagram-access-token"
@@ -104,6 +106,9 @@ function setup_secrets() {
     "WORDPRESS_USERNAME:photobridge-wp-username"
     "WORDPRESS_APP_PASSWORD:photobridge-wp-app-password"
     "GOOGLE_DRIVE_FOLDER_ID:photobridge-drive-folder-id"
+    "GOOGLE_DRIVE_CLIENT_ID:photobridge-drive-client-id"
+    "GOOGLE_DRIVE_CLIENT_SECRET:photobridge-drive-client-secret"
+    "GOOGLE_DRIVE_REFRESH_TOKEN:photobridge-drive-refresh-token"
     "INSTAGRAM_USER_ID:photobridge-instagram-user-id"
     "INSTAGRAM_ACCESS_TOKEN:photobridge-instagram-access-token"
   )
@@ -121,17 +126,6 @@ function setup_secrets() {
       unpopulated+=("$secret  ← $env_var")
     fi
   done
-
-  # Service account: .env holds a file path; the secret stores the JSON contents.
-  local sa_path
-  sa_path=$(get_env_val "GOOGLE_SERVICE_ACCOUNT_KEY_PATH")
-  if [[ -n "$sa_path" && -f "$sa_path" ]]; then
-    gcloud secrets versions add "photobridge-service-account-json" \
-      --project="$PROJECT_ID" --data-file="$sa_path"
-    echo "  [populated] photobridge-service-account-json  (read from $sa_path)"
-  else
-    unpopulated+=("photobridge-service-account-json  ← GOOGLE_SERVICE_ACCOUNT_KEY_PATH (must be a path to an existing JSON file)")
-  fi
 
   if [[ ${#unpopulated[@]} -gt 0 ]]; then
     echo ""
@@ -157,8 +151,18 @@ function deploy_function() {
     drive.googleapis.com \
     --project="$PROJECT_ID"
 
+  echo "=== Granting Secret Manager access to the Cloud Function ==="
+  local project_number
+  project_number=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${project_number}-compute@developer.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor" \
+    --condition=None \
+    --quiet
+
   # Build the --set-env-vars string from PLUGIN_ENV_VARS array
   PLUGIN_VARS_CSV=$(IFS=,; echo "${PLUGIN_ENV_VARS[*]}")
+
 
   echo "=== Deploying Cloud Function ==="
   gcloud functions deploy "$FUNCTION_NAME" \

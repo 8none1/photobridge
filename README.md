@@ -104,42 +104,50 @@ gcloud services enable \
 
 ### Step 3 — Google Drive
 
-#### 3a. Create a service account
+photobridge uses OAuth user credentials to upload to Drive, so files are owned
+by your Google account and count against your personal storage quota.
 
-A service account lets the Cloud Function write to Drive without any user
-needing to be logged in.
+#### 3a. Create an OAuth client
 
-```bash
-# Create the service account
-gcloud iam service-accounts create photobridge-sa \
-  --display-name="photobridge service account"
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → **APIs & Services → Credentials**
+2. Click **Create Credentials → OAuth client ID**
+3. If prompted to configure the consent screen: choose **External**, fill in an
+   app name (e.g. `photobridge`), add your Google account as a test user, and save
+4. Application type: **Desktop app** — give it a name and click **Create**
+5. Note the **Client ID** and **Client Secret**
 
-# Note the email address — you'll need it in step 3c
-gcloud iam service-accounts list
+Set them in your `.env`:
+```
+GOOGLE_DRIVE_CLIENT_ID=your_client_id
+GOOGLE_DRIVE_CLIENT_SECRET=your_client_secret
 ```
 
-The email will look like `photobridge-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com`.
+#### 3b. Generate a refresh token
 
-#### 3b. Download the JSON key (local dev only)
+Run the helper script once locally:
 
 ```bash
-gcloud iam service-accounts keys create ~/photobridge-sa-key.json \
-  --iam-account=photobridge-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
+pip install google-auth-oauthlib
+python scripts/get_drive_token.py
 ```
 
-Set `GOOGLE_SERVICE_ACCOUNT_KEY_PATH=~/photobridge-sa-key.json` in your `.env`.
+A browser window will open asking you to sign in with your Google account and
+grant Drive access. Once complete, the script prints your refresh token and the
+exact `gcloud` commands to store it in Secret Manager.
 
-> In production the key is stored in Secret Manager instead — see Step 6.
-> Do not commit the JSON file.
+Set in your `.env`:
+```
+GOOGLE_DRIVE_REFRESH_TOKEN=your_refresh_token
+```
 
-#### 3c. Create a Drive folder and share it
+#### 3c. Create a Drive folder
 
 1. Go to [drive.google.com](https://drive.google.com) and create a folder
    (e.g. "photobridge uploads")
-2. Right-click the folder → **Share**
-3. Add the service account email from step 3a with **Editor** role
-4. Click the folder, look at the URL: `https://drive.google.com/drive/folders/FOLDER_ID`
-5. Copy the `FOLDER_ID` and set `GOOGLE_DRIVE_FOLDER_ID=FOLDER_ID` in your `.env`
+2. Click the folder, look at the URL: `https://drive.google.com/drive/folders/FOLDER_ID`
+3. Copy the `FOLDER_ID` and set `GOOGLE_DRIVE_FOLDER_ID=FOLDER_ID` in your `.env`
+
+No sharing or service account setup required — the function uploads as you.
 
 ---
 
@@ -280,7 +288,7 @@ INSTAGRAM_ACCESS_TOKEN=your_long_lived_token
 #### 7a. Set up Secret Manager
 
 Make sure your `.env` is fully populated (all values from the earlier steps),
-then run:
+then run from the **repo root**:
 
 ```bash
 gcloud config set project YOUR_PROJECT_ID
@@ -301,26 +309,15 @@ echo -n 'VALUE' | gcloud secrets versions add SECRET_NAME --data-file=-
 Re-running `setup-secrets` after updating `.env` is safe — it adds a new secret
 version (promoting it to latest) without touching other secrets.
 
-#### 7b. Grant Secret Manager access to the Cloud Function
-
-The function runs as the **default Compute Engine service account**. Grant it
-access to read your secrets:
-
-```bash
-PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
-
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-```
-
-#### 7c. Deploy the function
+#### 7b. Deploy the function
 
 ```bash
 ./deploy/deploy.sh deploy
 ```
 
-This will print a **Webhook URL** when it finishes. Keep it handy for the next step.
+This enables the required APIs, grants the Cloud Function's service account
+access to Secret Manager, and deploys the function. It will print a
+**Webhook URL** when it finishes. Keep it handy for the next step.
 
 To override the default plugin settings at deploy time, edit the `PLUGIN_ENV_VARS`
 array near the top of `deploy/deploy.sh` before running.
@@ -390,6 +387,10 @@ pytest tests/ -v
 ---
 
 ## Plugin configuration reference
+
+> **Important:** any plugin that is enabled but missing credentials will cause
+> a 500 error on every incoming photo. If you haven't set up Instagram yet,
+> set `PLUGIN_INSTAGRAM_ENABLED=false` before deploying.
 
 All plugin settings are plain environment variables (not secrets).
 
