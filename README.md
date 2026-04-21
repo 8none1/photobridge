@@ -279,34 +279,27 @@ INSTAGRAM_ACCESS_TOKEN=your_long_lived_token
 
 #### 7a. Set up Secret Manager
 
+Make sure your `.env` is fully populated (all values from the earlier steps),
+then run:
+
 ```bash
 gcloud config set project YOUR_PROJECT_ID
 ./deploy/deploy.sh setup-secrets
 ```
 
-This creates all required secret entries in Secret Manager. Then populate each
-one — the script prints the exact commands:
+This creates all required secrets in Secret Manager **and populates them from
+your `.env` file** in one step. The service account JSON is read from the path
+set in `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` and its contents are stored as the secret.
+
+If any values are missing or still contain placeholder text, the script will
+list them and show the manual command to set each one:
 
 ```bash
-# WhatsApp
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-wa-phone-number-id --data-file=-
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-wa-access-token --data-file=-
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-wa-verify-token --data-file=-
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-wa-app-secret --data-file=-
-
-# WordPress
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-wp-url --data-file=-
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-wp-username --data-file=-
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-wp-app-password --data-file=-
-
-# Google Drive
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-drive-folder-id --data-file=-
-cat ~/photobridge-sa-key.json | gcloud secrets versions add photobridge-service-account-json --data-file=-
-
-# Instagram (skip if not using Instagram)
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-instagram-user-id --data-file=-
-echo -n 'YOUR_VALUE' | gcloud secrets versions add photobridge-instagram-access-token --data-file=-
+echo -n 'VALUE' | gcloud secrets versions add SECRET_NAME --data-file=-
 ```
+
+Re-running `setup-secrets` after updating `.env` is safe — it adds a new secret
+version (promoting it to latest) without touching other secrets.
 
 #### 7b. Grant Secret Manager access to the Cloud Function
 

@@ -52,8 +52,21 @@ PLUGIN_ENV_VARS=(
   "PLUGIN_INSTAGRAM_TAG=#instagram"
 )
 
+# Read a variable's value from a .env file; returns empty if missing or still a placeholder.
+get_env_val() {
+  local var="$1"
+  local val
+  val=$(grep -E "^${var}=" .env 2>/dev/null | head -1 | cut -d= -f2-)
+  if [[ -z "$val" || "$val" == *"_here" || "$val" =~ ^your_ ]]; then
+    echo ""
+  else
+    echo "$val"
+  fi
+}
+
 function setup_secrets() {
   echo "=== Creating Secret Manager secrets ==="
+
   for secret in "${SECRET_NAMES[@]}"; do
     if gcloud secrets describe "$secret" --project="$PROJECT_ID" &>/dev/null; then
       echo "  [exists] $secret"
@@ -62,10 +75,74 @@ function setup_secrets() {
         --project="$PROJECT_ID" \
         --replication-policy="automatic"
       echo "  [created] $secret"
-      echo "  --> Set its value with:"
-      echo "      echo -n 'YOUR_VALUE' | gcloud secrets versions add $secret --data-file=-"
     fi
   done
+
+  if [[ ! -f ".env" ]]; then
+    echo ""
+    echo "No .env file found — populate each secret manually:"
+    for secret in "${SECRET_NAMES[@]}"; do
+      echo "  echo -n 'VALUE' | gcloud secrets versions add $secret --data-file=-"
+    done
+    echo ""
+    echo "After populating all secrets, run:  ./deploy/deploy.sh deploy"
+    return
+  fi
+
+  echo ""
+  echo "=== Populating secrets from .env ==="
+
+  local unpopulated=()
+
+  # env var name → secret manager name
+  local -a pairs=(
+    "WHATSAPP_PHONE_NUMBER_ID:photobridge-wa-phone-number-id"
+    "WHATSAPP_ACCESS_TOKEN:photobridge-wa-access-token"
+    "WHATSAPP_VERIFY_TOKEN:photobridge-wa-verify-token"
+    "WHATSAPP_APP_SECRET:photobridge-wa-app-secret"
+    "WORDPRESS_URL:photobridge-wp-url"
+    "WORDPRESS_USERNAME:photobridge-wp-username"
+    "WORDPRESS_APP_PASSWORD:photobridge-wp-app-password"
+    "GOOGLE_DRIVE_FOLDER_ID:photobridge-drive-folder-id"
+    "INSTAGRAM_USER_ID:photobridge-instagram-user-id"
+    "INSTAGRAM_ACCESS_TOKEN:photobridge-instagram-access-token"
+  )
+
+  for pair in "${pairs[@]}"; do
+    local env_var="${pair%%:*}"
+    local secret="${pair##*:}"
+    local val
+    val=$(get_env_val "$env_var")
+    if [[ -n "$val" ]]; then
+      echo -n "$val" | gcloud secrets versions add "$secret" \
+        --project="$PROJECT_ID" --data-file=-
+      echo "  [populated] $secret"
+    else
+      unpopulated+=("$secret  ← $env_var")
+    fi
+  done
+
+  # Service account: .env holds a file path; the secret stores the JSON contents.
+  local sa_path
+  sa_path=$(get_env_val "GOOGLE_SERVICE_ACCOUNT_KEY_PATH")
+  if [[ -n "$sa_path" && -f "$sa_path" ]]; then
+    gcloud secrets versions add "photobridge-service-account-json" \
+      --project="$PROJECT_ID" --data-file="$sa_path"
+    echo "  [populated] photobridge-service-account-json  (read from $sa_path)"
+  else
+    unpopulated+=("photobridge-service-account-json  ← GOOGLE_SERVICE_ACCOUNT_KEY_PATH (must be a path to an existing JSON file)")
+  fi
+
+  if [[ ${#unpopulated[@]} -gt 0 ]]; then
+    echo ""
+    echo "These secrets were not populated (missing, placeholder, or file not found in .env):"
+    for item in "${unpopulated[@]}"; do
+      echo "  $item"
+    done
+    echo ""
+    echo "Set them manually with:"
+    echo "  echo -n 'VALUE' | gcloud secrets versions add SECRET_NAME --data-file=-"
+  fi
 
   echo ""
   echo "After populating all secrets, run:  ./deploy/deploy.sh deploy"
