@@ -4,5 +4,6 @@ google-auth==2.*
 google-auth-httplib2==0.*
 google-api-python-client==2.*
 google-cloud-secret-manager==2.*
+google-cloud-vision==3.*
 Pillow==10.*
 python-dotenv==1.*

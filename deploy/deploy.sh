@@ -52,6 +52,10 @@ PLUGIN_ENV_VARS=(
   "PLUGIN_INSTAGRAM_ENABLED=true"
   "PLUGIN_INSTAGRAM_REQUIRE_TAG=false"
   "PLUGIN_INSTAGRAM_TAG=#instagram"
+  "PLUGIN_AI_GATE_ENABLED=true"
+  "PLUGIN_AI_GATE_REQUIRE_TAG=false"
+  "PLUGIN_AI_GATE_TAG=#ai_gate"
+  "PLUGIN_AI_GATE_THRESHOLD=POSSIBLE"
 )
 
 # Read a variable's value from a .env file; returns empty if missing or still a placeholder.
@@ -149,6 +153,7 @@ function deploy_function() {
     run.googleapis.com \
     secretmanager.googleapis.com \
     drive.googleapis.com \
+    vision.googleapis.com \
     --project="$PROJECT_ID"
 
   echo "=== Granting Secret Manager access to the Cloud Function ==="

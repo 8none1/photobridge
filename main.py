@@ -20,6 +20,7 @@ from flask import Request, jsonify
 
 from photobridge.config import settings
 from photobridge.handlers.whatsapp import WhatsAppHandler
+from photobridge.plugins.ai_gate import AIGatePlugin
 from photobridge.plugins.drive import DrivePlugin
 from photobridge.plugins.instagram import InstagramPlugin
 from photobridge.plugins.wordpress import WordPressPlugin
@@ -34,6 +35,7 @@ PLUGINS = sorted(
     [
         WordPressPlugin(settings),
         DrivePlugin(settings),
+        AIGatePlugin(settings),
         InstagramPlugin(settings),
     ],
     key=lambda p: p.priority,
@@ -150,11 +152,16 @@ def _handle_image_message(message: dict) -> None:
             logger.exception("Plugin '%s' failed for image %s", plugin.name, image_id)
             errors.append(plugin.name)
 
+    # Only count plugins that produced a URL (excludes gates like ai_gate)
+    uploaded = [k for k, v in context.items() if v and not k.startswith("ai_gate")]
+
     if errors:
         _whatsapp.send_reply(sender, f"Photo received but upload failed for: {', '.join(errors)}.")
-    elif context:
-        destinations = ", ".join(context.keys())
-        _whatsapp.send_reply(sender, f"Photo uploaded to: {destinations}!")
-    else:
-        # All plugins were skipped (none triggered)
+    elif uploaded:
+        _whatsapp.send_reply(sender, f"Photo uploaded to: {', '.join(uploaded)}!")
+    elif not context.get("ai_gate_rejected"):
         logger.info("No plugins triggered for image %s", image_id)
+
+    if context.get("ai_gate_rejected"):
+        reason = context.get("ai_gate_reason", "content policy")
+        _whatsapp.send_reply(sender, f"Your photo was not posted to Instagram: {reason}.")

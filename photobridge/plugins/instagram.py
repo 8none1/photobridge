@@ -64,6 +64,10 @@ class InstagramPlugin(BasePlugin):
         caption: str,
         context: dict,
     ) -> str:
+        if context.get("ai_gate_rejected"):
+            logger.info("Instagram skipped — blocked by AI gate")
+            return ""
+
         image_url = context.get(self._image_source, "")
         if not image_url:
             raise RuntimeError(

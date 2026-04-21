@@ -254,45 +254,44 @@ Skip this step if you don't need Instagram publishing.
 
 #### 6a. Requirements
 
-- An **Instagram Business or Creator** account (personal accounts cannot publish via API)
-- The Instagram account must be **linked to a Facebook Page**
-  - Instagram app → Settings → Account → Linked Accounts → Facebook
+- An **Instagram Creator or Business** account — personal accounts cannot use
+  the API. Convert in the Instagram app: **Settings → Account type and tools →
+  Switch to Professional account**
+- The Instagram account must be **linked to a Facebook Page** — in the
+  Instagram app: **Settings → Account type and tools → Linked accounts →
+  Facebook**
+- Your Meta Developer app must be the same app used in Step 5, owned by the
+  Facebook account that manages the linked Page
 
 #### 6b. Add Instagram to your Meta App
 
-1. In your Meta Developer App dashboard → **Add Product → Instagram**
-2. Go to **Instagram → Basic Display** and add your Instagram account as a test user
-3. Go to **Instagram → Graph API** → generate a token with these permissions:
-   - `instagram_basic`
-   - `instagram_content_publish`
+In your Meta Developer App dashboard, click **Add Product** and add
+**Instagram**. You don't need to configure anything on the Instagram product
+page — the token script handles everything.
 
-For production use a **long-lived token** (60-day expiry, renewable):
-```bash
-curl -i -X GET "https://graph.facebook.com/oauth/access_token \
-  ?grant_type=fb_exchange_token \
-  &client_id=YOUR_APP_ID \
-  &client_secret=YOUR_APP_SECRET \
-  &fb_exchange_token=YOUR_SHORT_LIVED_TOKEN"
-```
+#### 6c. Get your access token and Instagram User ID
 
-#### 6c. Find your Instagram User ID
+Run the helper script:
 
 ```bash
-curl "https://graph.facebook.com/v19.0/me/accounts \
-  ?access_token=YOUR_LONG_LIVED_TOKEN"
-# Find the page, then:
-curl "https://graph.facebook.com/v19.0/YOUR_PAGE_ID \
-  ?fields=instagram_business_account \
-  &access_token=YOUR_LONG_LIVED_TOKEN"
+python scripts/get_instagram_token.py
 ```
 
-The `instagram_business_account.id` value is your `INSTAGRAM_USER_ID`.
+The script walks you through getting a short-lived token from the Graph API
+Explorer, exchanges it for a long-lived one (~60 days), and finds your
+Instagram User ID automatically. It prints the values ready to add to `.env`.
 
-Set these in your `.env`:
+Add to your `.env`:
 ```
 INSTAGRAM_USER_ID=your_instagram_user_id
 INSTAGRAM_ACCESS_TOKEN=your_long_lived_token
 ```
+
+Then run `./deploy/deploy.sh setup-secrets` to push them to Secret Manager.
+
+> **Token expiry:** long-lived tokens expire after ~60 days. Re-run
+> `scripts/get_instagram_token.py` with a fresh short-lived token to rotate,
+> then re-run `setup-secrets` and redeploy. Set a calendar reminder.
 
 ---
 
