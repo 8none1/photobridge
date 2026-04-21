@@ -111,34 +111,47 @@ by your Google account and count against your personal storage quota.
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com) → **APIs & Services → Credentials**
 2. Click **Create Credentials → OAuth client ID**
-3. If prompted to configure the consent screen: choose **External**, fill in an
-   app name (e.g. `photobridge`), add your Google account as a test user, and save
-4. Application type: **Desktop app** — give it a name and click **Create**
-5. Note the **Client ID** and **Client Secret**
+3. You'll be prompted to configure the OAuth consent screen first:
+   - Choose **External**
+   - App name: `photobridge`
+   - User support email: your email
+   - Under **Test users**, add your Google account email
+   - Save and continue through the remaining screens (leave most fields blank)
+4. Back on the Create OAuth client ID screen:
+   - Application type: **Desktop app**
+   - Name: `photobridge`
+   - Click **Create**
+5. Copy the **Client ID** and **Client Secret** — set them in your `.env`:
 
-Set them in your `.env`:
 ```
 GOOGLE_DRIVE_CLIENT_ID=your_client_id
 GOOGLE_DRIVE_CLIENT_SECRET=your_client_secret
 ```
 
+> Allow a minute or two before running the token script — new OAuth clients can
+> take a moment to become active.
+
 #### 3b. Generate a refresh token
 
-Run the helper script once locally:
+Run the helper script once locally. It only needs `google-auth-oauthlib` which
+isn't required at runtime, so a throwaway virtualenv is the cleanest approach:
 
 ```bash
+python -m venv /tmp/pb-token && source /tmp/pb-token/bin/activate
 pip install google-auth-oauthlib
 python scripts/get_drive_token.py
+deactivate
 ```
 
-A browser window will open asking you to sign in with your Google account and
-grant Drive access. Once complete, the script prints your refresh token and the
-exact `gcloud` commands to store it in Secret Manager.
+A browser window will open — sign in with your Google account and grant Drive
+access. The script will print your refresh token. Add it to your `.env`:
 
-Set in your `.env`:
 ```
 GOOGLE_DRIVE_REFRESH_TOKEN=your_refresh_token
 ```
+
+Then run `./deploy/deploy.sh setup-secrets` to push all three Drive values to
+Secret Manager in one go.
 
 #### 3c. Create a Drive folder
 
