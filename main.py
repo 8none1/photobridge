@@ -14,6 +14,7 @@ Adding a new destination
 import hashlib
 import hmac
 import logging
+from collections import OrderedDict
 
 import functions_framework
 from flask import Request, jsonify
@@ -27,6 +28,22 @@ from photobridge.plugins.wordpress import WordPressPlugin
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# In-memory dedup cache — prevents processing the same message twice when
+# Meta retries a webhook after a slow response. Keyed by WhatsApp message ID.
+# Works reliably for a single-instance bot; for multi-instance deployments
+# use Firestore or Memorystore instead.
+_seen_message_ids: OrderedDict = OrderedDict()
+_DEDUP_CACHE_SIZE = 500
+
+
+def _is_duplicate(message_id: str) -> bool:
+    if message_id in _seen_message_ids:
+        return True
+    _seen_message_ids[message_id] = True
+    if len(_seen_message_ids) > _DEDUP_CACHE_SIZE:
+        _seen_message_ids.popitem(last=False)
+    return False
 
 # --- Plugin registry ---
 # Plugins are sorted by priority at startup; lower number runs first.
@@ -96,6 +113,10 @@ def _process_payload(payload: dict) -> None:
         for change in entry.get("changes", []):
             value = change.get("value", {})
             for message in value.get("messages", []):
+                msg_id = message.get("id", "")
+                if msg_id and _is_duplicate(msg_id):
+                    logger.info("Skipping duplicate message %s", msg_id)
+                    continue
                 if not _is_relevant_message(message):
                     continue
                 _handle_image_message(message)
