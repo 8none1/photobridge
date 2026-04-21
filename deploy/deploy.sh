@@ -35,6 +35,9 @@ SECRET_NAMES=(
   "photobridge-drive-client-id"
   "photobridge-drive-client-secret"
   "photobridge-drive-refresh-token"
+  # Facebook
+  "photobridge-fb-page-id"
+  "photobridge-fb-page-access-token"
   # Instagram
   "photobridge-instagram-user-id"
   "photobridge-instagram-access-token"
@@ -49,6 +52,9 @@ PLUGIN_ENV_VARS=(
   "PLUGIN_DRIVE_ENABLED=true"
   "PLUGIN_DRIVE_REQUIRE_TAG=false"
   "PLUGIN_DRIVE_TAG=#drive"
+  "PLUGIN_FACEBOOK_ENABLED=true"
+  "PLUGIN_FACEBOOK_REQUIRE_TAG=false"
+  "PLUGIN_FACEBOOK_TAG=#facebook"
   "PLUGIN_INSTAGRAM_ENABLED=true"
   "PLUGIN_INSTAGRAM_REQUIRE_TAG=false"
   "PLUGIN_INSTAGRAM_TAG=#instagram"
@@ -113,6 +119,8 @@ function setup_secrets() {
     "GOOGLE_DRIVE_CLIENT_ID:photobridge-drive-client-id"
     "GOOGLE_DRIVE_CLIENT_SECRET:photobridge-drive-client-secret"
     "GOOGLE_DRIVE_REFRESH_TOKEN:photobridge-drive-refresh-token"
+    "FACEBOOK_PAGE_ID:photobridge-fb-page-id"
+    "FACEBOOK_PAGE_ACCESS_TOKEN:photobridge-fb-page-access-token"
     "INSTAGRAM_USER_ID:photobridge-instagram-user-id"
     "INSTAGRAM_ACCESS_TOKEN:photobridge-instagram-access-token"
   )

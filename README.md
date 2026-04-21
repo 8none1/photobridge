@@ -1,3 +1,5 @@
+![photobridge](logo.png)
+
 # photobridge
 
 A serverless bot that bridges WhatsApp photos to a WordPress gallery, Google Drive, and Instagram.
@@ -27,6 +29,7 @@ while everything else is automatic.
 |--------|---------|-------------|
 | WordPress | Always on | `#wordpress` (if tag mode enabled) |
 | Google Drive | Always on | `#drive` (if tag mode enabled) |
+| Facebook | Always on | `#facebook` (if tag mode enabled) |
 | Instagram | Always on | `#instagram` (if tag mode enabled) |
 
 To make Instagram opt-in rather than automatic, set `PLUGIN_INSTAGRAM_REQUIRE_TAG=true`
@@ -248,7 +251,40 @@ to Meta that the webhook endpoint belongs to you.
 
 ---
 
-### Step 6 — Instagram (optional)
+### Step 6 — Facebook and Instagram (optional)
+
+Skip either section if you don't need that destination.
+
+#### Facebook
+
+##### 6a. Get a Page access token
+
+You'll need a Facebook Page and a User token with `pages_manage_posts`,
+`pages_read_engagement`, and `pages_show_list` permissions. Run the helper
+script:
+
+```bash
+python scripts/get_facebook_token.py
+```
+
+The script exchanges a short-lived User token (from Graph API Explorer) for a
+long-lived one, then fetches the Page access token automatically. Full
+instructions for getting the short-lived token are in the script's header.
+
+Add to your `.env`:
+```
+FACEBOOK_PAGE_ID=your_page_id
+FACEBOOK_PAGE_ACCESS_TOKEN=your_page_access_token
+```
+
+Then run `./deploy/deploy.sh setup-secrets` to push them to Secret Manager.
+
+> Page access tokens derived from a long-lived User token **do not expire** —
+> you only need to re-run the script if you revoke the app's access.
+
+---
+
+### Instagram (optional)
 
 Skip this step if you don't need Instagram publishing.
 

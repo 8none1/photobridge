@@ -86,6 +86,16 @@ class Settings:
     def google_drive_refresh_token(self) -> str:
         return self._get("GOOGLE_DRIVE_REFRESH_TOKEN", "photobridge-drive-refresh-token")
 
+    # --- Facebook ---
+
+    @property
+    def facebook_page_id(self) -> str:
+        return self._get("FACEBOOK_PAGE_ID", "photobridge-fb-page-id")
+
+    @property
+    def facebook_page_access_token(self) -> str:
+        return self._get("FACEBOOK_PAGE_ACCESS_TOKEN", "photobridge-fb-page-access-token")
+
     # --- Instagram ---
 
     @property

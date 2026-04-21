@@ -23,6 +23,7 @@ from photobridge.config import settings
 from photobridge.handlers.whatsapp import WhatsAppHandler
 from photobridge.plugins.ai_gate import AIGatePlugin
 from photobridge.plugins.drive import DrivePlugin
+from photobridge.plugins.facebook import FacebookPlugin
 from photobridge.plugins.instagram import InstagramPlugin
 from photobridge.plugins.wordpress import WordPressPlugin
 
@@ -52,6 +53,7 @@ PLUGINS = sorted(
     [
         WordPressPlugin(settings),
         DrivePlugin(settings),
+        FacebookPlugin(settings),
         AIGatePlugin(settings),
         InstagramPlugin(settings),
     ],
