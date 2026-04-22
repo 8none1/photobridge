@@ -17,6 +17,7 @@ import logging
 from collections import OrderedDict
 
 import functions_framework
+import requests
 from flask import Request, jsonify
 
 from photobridge.config import settings
@@ -66,6 +67,10 @@ _whatsapp = WhatsAppHandler(settings)
 @functions_framework.http
 def webhook(request: Request):
     """HTTP Cloud Function entrypoint."""
+
+    # --- Instagram token auto-refresh (called by Cloud Scheduler) ---
+    if request.method == "POST" and request.path == "/refresh-instagram-token":
+        return _handle_token_refresh(request)
 
     # --- Webhook verification handshake (GET) ---
     if request.method == "GET":
@@ -188,3 +193,46 @@ def _handle_image_message(message: dict) -> None:
     if context.get("ai_gate_rejected"):
         reason = context.get("ai_gate_reason", "content policy")
         _whatsapp.send_reply(sender, f"Your photo was not posted to Instagram: {reason}.")
+
+
+def _handle_token_refresh(request: Request):
+    """Called by Cloud Scheduler monthly to rotate the Instagram access token."""
+    secret = request.headers.get("X-Refresh-Secret", "")
+    if not secret or not hmac.compare_digest(secret, settings.refresh_secret):
+        logger.warning("Token refresh request with invalid secret")
+        return "Unauthorized", 401
+
+    try:
+        _refresh_instagram_token()
+        return jsonify({"status": "refreshed"}), 200
+    except Exception:
+        logger.exception("Failed to refresh Instagram token")
+        return "Internal Server Error", 500
+
+
+def _refresh_instagram_token() -> None:
+    """Exchange the current Instagram token for a fresh 60-day token and update Secret Manager."""
+    current_token = settings.instagram_access_token
+
+    resp = requests.get(
+        "https://graph.instagram.com/refresh_access_token",
+        params={"grant_type": "ig_refresh_token", "access_token": current_token},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    new_token = data.get("access_token")
+    if not new_token:
+        raise RuntimeError(f"Instagram token refresh returned no token: {resp.text}")
+
+    from google.cloud import secretmanager
+    client = secretmanager.SecretManagerServiceClient()
+    secret_path = (
+        f"projects/{settings.gcp_project_id}/secrets/photobridge-instagram-access-token"
+    )
+    client.add_secret_version(
+        request={"parent": secret_path, "payload": {"data": new_token.encode()}}
+    )
+    logger.info(
+        "Instagram access token refreshed; expires_in=%s seconds", data.get("expires_in")
+    )

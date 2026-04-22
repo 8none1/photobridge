@@ -106,5 +106,15 @@ class Settings:
     def instagram_access_token(self) -> str:
         return self._get("INSTAGRAM_ACCESS_TOKEN", "photobridge-instagram-access-token")
 
+    # --- Internal ---
+
+    @property
+    def gcp_project_id(self) -> str:
+        return self._project_id
+
+    @property
+    def refresh_secret(self) -> str:
+        return self._get("REFRESH_SECRET", "photobridge-refresh-secret")
+
 
 settings = Settings()

@@ -41,6 +41,8 @@ SECRET_NAMES=(
   # Instagram
   "photobridge-instagram-user-id"
   "photobridge-instagram-access-token"
+  # Token refresh
+  "photobridge-refresh-secret"
 )
 
 # Plugin on/off and tag configuration is set via plain env vars (not secrets)
@@ -139,6 +141,17 @@ function setup_secrets() {
     fi
   done
 
+  # Auto-generate REFRESH_SECRET if not provided
+  local refresh_val
+  refresh_val=$(get_env_val "REFRESH_SECRET")
+  if [[ -z "$refresh_val" ]]; then
+    refresh_val=$(openssl rand -hex 32)
+    echo "  [generated] photobridge-refresh-secret (auto-generated random value)"
+  fi
+  echo -n "$refresh_val" | gcloud secrets versions add "photobridge-refresh-secret" \
+    --project="$PROJECT_ID" --data-file=-
+  echo "  [populated] photobridge-refresh-secret"
+
   if [[ ${#unpopulated[@]} -gt 0 ]]; then
     echo ""
     echo "These secrets were not populated (missing, placeholder, or file not found in .env):"
@@ -162,6 +175,7 @@ function deploy_function() {
     secretmanager.googleapis.com \
     drive.googleapis.com \
     vision.googleapis.com \
+    cloudscheduler.googleapis.com \
     --project="$PROJECT_ID"
 
   echo "=== Granting Secret Manager access to the Cloud Function ==="
@@ -194,6 +208,34 @@ function deploy_function() {
     --region="$REGION" \
     --project="$PROJECT_ID" \
     --format="value(serviceConfig.uri)")
+
+  echo "=== Setting up Instagram token auto-refresh ==="
+  local refresh_secret_val
+  refresh_secret_val=$(gcloud secrets versions access latest \
+    --secret="photobridge-refresh-secret" \
+    --project="$PROJECT_ID")
+
+  local scheduler_job="photobridge-instagram-token-refresh"
+  if gcloud scheduler jobs describe "$scheduler_job" \
+      --location="$REGION" --project="$PROJECT_ID" &>/dev/null; then
+    gcloud scheduler jobs update http "$scheduler_job" \
+      --location="$REGION" \
+      --schedule="0 0 1 * *" \
+      --uri="${FUNCTION_URL}/refresh-instagram-token" \
+      --headers="X-Refresh-Secret=${refresh_secret_val}" \
+      --attempt-deadline=30s \
+      --project="$PROJECT_ID"
+    echo "  [updated] Cloud Scheduler job: ${scheduler_job}"
+  else
+    gcloud scheduler jobs create http "$scheduler_job" \
+      --location="$REGION" \
+      --schedule="0 0 1 * *" \
+      --uri="${FUNCTION_URL}/refresh-instagram-token" \
+      --headers="X-Refresh-Secret=${refresh_secret_val}" \
+      --attempt-deadline=30s \
+      --project="$PROJECT_ID"
+    echo "  [created] Cloud Scheduler job: ${scheduler_job}"
+  fi
 
   echo ""
   echo "=== Deployment complete ==="

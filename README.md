@@ -325,9 +325,9 @@ INSTAGRAM_ACCESS_TOKEN=your_long_lived_token
 
 Then run `./deploy/deploy.sh setup-secrets` to push them to Secret Manager.
 
-> **Token expiry:** long-lived tokens expire after ~60 days. Re-run
-> `scripts/get_instagram_token.py` with a fresh short-lived token to rotate,
-> then re-run `setup-secrets` and redeploy. Set a calendar reminder.
+> **Token expiry:** long-lived tokens expire after ~60 days, but the deploy script
+> sets up a Cloud Scheduler job that refreshes the token automatically on the 1st
+> of each month — no manual rotation needed. See [Token longevity](#token-longevity).
 
 ---
 
@@ -450,6 +450,9 @@ All plugin settings are plain environment variables (not secrets).
 | `PLUGIN_DRIVE_ENABLED` | `true` | Enable/disable Google Drive uploads |
 | `PLUGIN_DRIVE_REQUIRE_TAG` | `false` | Only upload if caption contains the tag |
 | `PLUGIN_DRIVE_TAG` | `#drive` | Tag to require when `REQUIRE_TAG=true` |
+| `PLUGIN_FACEBOOK_ENABLED` | `true` | Enable/disable Facebook Page posts |
+| `PLUGIN_FACEBOOK_REQUIRE_TAG` | `false` | Only post if caption contains the tag |
+| `PLUGIN_FACEBOOK_TAG` | `#facebook` | Tag to require when `REQUIRE_TAG=true` |
 | `PLUGIN_INSTAGRAM_ENABLED` | `true` | Enable/disable Instagram publishing |
 | `PLUGIN_INSTAGRAM_REQUIRE_TAG` | `false` | Only post if caption contains the tag |
 | `PLUGIN_INSTAGRAM_TAG` | `#instagram` | Tag to require when `REQUIRE_TAG=true` |
@@ -475,8 +478,63 @@ Then redeploy. Photos will only reach Instagram when the sender includes `#insta
 - Secrets are never stored in source code. Use `.env` locally, Secret Manager in production.
 - The `.env` file and all service account JSON files are gitignored — verify with
   `git status` before committing.
-- Instagram long-lived tokens expire after 60 days. Set a calendar reminder to refresh
-  the token before expiry using the exchange endpoint in step 6b.
+- Instagram long-lived tokens expire after 60 days. The deploy script creates a
+  Cloud Scheduler job that refreshes the token automatically on the 1st of each month
+  — no manual intervention needed. See [Token longevity](#token-longevity) below.
+
+## Token longevity
+
+Different credentials have different expiry behaviour. Here's how each is handled:
+
+### WhatsApp access token — use a System User token (permanent)
+
+The temporary token from the Meta Developer Console expires after 24 hours. For
+production, create a permanent System User token:
+
+1. Go to [business.facebook.com](https://business.facebook.com) → **Settings → System Users**
+2. Click **Add** → give it a name (e.g. `photobridge-bot`) → role: **Employee**
+3. Click **Add Assets** → select your WhatsApp app → grant **Full control**
+4. Click **Generate New Token** → select your app → enable **whatsapp_business_messaging**
+5. Copy the token and update the secret:
+   ```bash
+   echo -n 'YOUR_TOKEN' | gcloud secrets versions add photobridge-wa-access-token --data-file=-
+   ```
+
+System User tokens **do not expire**. You only need to rotate them if you revoke access.
+
+### Facebook Page access token — already permanent
+
+The `get_facebook_token.py` script exchanges your short-lived User token for a
+long-lived one, then fetches a Page access token derived from it. Page access tokens
+derived from long-lived User tokens **do not expire**. No maintenance needed.
+
+### Instagram access token — auto-refreshed by Cloud Scheduler
+
+Instagram long-lived tokens expire after 60 days. The deploy script automatically:
+
+1. Generates a random `REFRESH_SECRET` and stores it in Secret Manager
+2. Creates a Cloud Scheduler job (`photobridge-instagram-token-refresh`) that fires
+   on the 1st of each month
+3. The job calls `POST /refresh-instagram-token` on your Cloud Function with the
+   secret in the `X-Refresh-Secret` header
+4. The function exchanges the current token for a new 60-day token and updates
+   Secret Manager in place
+
+**No action required** — the token stays fresh automatically after the first deploy.
+
+To trigger a manual refresh at any time:
+
+```bash
+# Read the refresh secret
+SECRET=$(gcloud secrets versions access latest --secret=photobridge-refresh-secret)
+FUNCTION_URL=$(gcloud functions describe photobridge --gen2 --region=us-central1 \
+  --format="value(serviceConfig.uri)")
+
+curl -X POST "${FUNCTION_URL}/refresh-instagram-token" \
+  -H "X-Refresh-Secret: ${SECRET}"
+```
+
+---
 
 ## Architecture
 
